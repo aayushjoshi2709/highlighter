@@ -80,4 +80,3 @@ import the same file.
 - Tombstones are kept indefinitely (no garbage collection yet).
 - Google sign-in and Drive sync have not been exercised against a real Google account in this repository's tests;
   they need the OAuth setup above.
-# highlighter
