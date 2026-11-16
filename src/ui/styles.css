@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --c-white: 255 255 255;
+    --c-slate-50: 248 250 252;
+    --c-slate-100: 241 245 249;
+    --c-slate-200: 226 232 240;
+    --c-slate-300: 203 213 225;
+    --c-slate-400: 148 163 184;
+    --c-slate-500: 100 116 139;
+    --c-slate-600: 71 85 105;
+    --c-slate-700: 51 65 85;
+    --c-slate-800: 30 41 59;
+    --c-slate-900: 15 23 42;
+    --c-blue-50: 239 246 255;
+    --c-blue-700: 29 78 216;
+    --c-red-50: 254 242 242;
+    --c-red-600: 220 38 38;
+    --c-red-700: 185 28 28;
+    --c-red-800: 153 27 27;
+    --c-emerald-50: 236 253 245;
+    --c-emerald-800: 6 95 70;
+    --c-amber-700: 180 83 9;
+  }
+  /* Dark theme: "white" is the raised surface, slate-50 the page behind it, and the slate scale is inverted. */
+  :root.dark {
+    color-scheme: dark;
+    --c-white: 30 41 59;
+    --c-slate-50: 15 23 42;
+    --c-slate-100: 44 58 82;
+    --c-slate-200: 51 65 85;
+    --c-slate-300: 71 85 105;
+    --c-slate-400: 100 116 139;
+    --c-slate-500: 148 163 184;
+    --c-slate-600: 203 213 225;
+    --c-slate-700: 226 232 240;
+    --c-slate-800: 241 245 249;
+    --c-slate-900: 248 250 252;
+    --c-blue-50: 30 58 110;
+    --c-blue-700: 147 197 253;
+    --c-red-50: 76 20 24;
+    --c-red-600: 248 113 113;
+    --c-red-700: 252 165 165;
+    --c-red-800: 254 202 202;
+    --c-emerald-50: 6 58 46;
+    --c-emerald-800: 167 243 208;
+    --c-amber-700: 252 211 77;
+  }
+  body { @apply bg-slate-50 text-slate-800; }
+}
+
+@layer components {
+  .btn { @apply inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50; }
+  .btn-primary { @apply inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-onaccent hover:bg-blue-500 disabled:opacity-50; }
+  .btn-danger { @apply inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50; }
+  .btn-ghost { @apply inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-slate-600 hover:bg-slate-100; }
+  .input { @apply rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500; }
+  .chip { @apply inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600; }
+}
