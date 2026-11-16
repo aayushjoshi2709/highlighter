@@ -1,9 +1,13 @@
 import { z } from "zod";
-import { HIGHLIGHT_COLORS } from "./constants";
+import { CUSTOM_COLOR_PATTERN, HIGHLIGHT_COLORS, type CustomColor, type PresetColor } from "./constants";
 
 export { HIGHLIGHT_COLORS };
-export const HighlightColorSchema = z.enum(HIGHLIGHT_COLORS);
-export type HighlightColor = z.infer<typeof HighlightColorSchema>;
+/** One of the six presets, or a custom "#rrggbb" colour. */
+export type HighlightColor = PresetColor | CustomColor;
+export const HighlightColorSchema = z.union([
+  z.enum(HIGHLIGHT_COLORS),
+  z.string().transform((s) => s.toLowerCase()).pipe(z.string().regex(CUSTOM_COLOR_PATTERN)),
+]) as unknown as z.ZodType<HighlightColor, z.ZodTypeDef, unknown>;
 
 export const SourceTypeSchema = z.enum(["webpage", "pdf"]);
 export type SourceType = z.infer<typeof SourceTypeSchema>;

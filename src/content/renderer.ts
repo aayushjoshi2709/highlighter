@@ -1,4 +1,4 @@
-import { colorWithAlpha } from "../shared/colors";
+import { colorWithAlpha, isPresetColor } from "../shared/colors";
 import { HIGHLIGHT_COLORS } from "../shared/constants";
 import type { HighlightColor } from "../shared/types";
 
@@ -18,17 +18,21 @@ export interface Renderer {
   clear(): void;
 }
 
-const NAME = (c: string) => `wph-${c}`;
+/** Highlight-registry name: "wph-yellow" for presets, "wph-c-rrggbb" for custom colours. */
+const NAME = (c: HighlightColor) => (isPresetColor(c) ? `wph-${c}` : `wph-c-${c.slice(1)}`);
 
-function installStyles(css: string) {
+/** Installs the rules and returns a function that appends further rules later. */
+function installStyles(css: string): (rule: string) => void {
   try {
     const sheet = new CSSStyleSheet();
     sheet.replaceSync(css);
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    return (rule) => void sheet.insertRule(rule, sheet.cssRules.length);
   } catch {
     const style = document.createElement("style");
     style.textContent = css;
     (document.head ?? document.documentElement).appendChild(style);
+    return (rule) => void style.append(`\n${rule}`);
   }
 }
 
@@ -43,13 +47,20 @@ class CssHighlightRenderer implements Renderer {
   readonly mutatesDom = false;
   private ranges = new Map<string, Range>();
   private order: string[] = [];
+  private addRule: (rule: string) => void;
+  /** Colours that already have a ::highlight rule. */
+  private styled = new Set<HighlightColor>(HIGHLIGHT_COLORS);
+  /** Registry names set by the last render, so stale ones can be removed. */
+  private active = new Set<string>();
 
   constructor() {
-    const rules = HIGHLIGHT_COLORS.map(
-      (c) => `::highlight(${NAME(c)}){background-color:${colorWithAlpha(c, 0.55)};color:inherit}`,
-    );
+    const rules = HIGHLIGHT_COLORS.map((c) => this.rule(c));
     rules.push(`::highlight(wph-flash){background-color:rgba(239,68,68,.45)}`);
-    installStyles(rules.join("\n"));
+    this.addRule = installStyles(rules.join("\n"));
+  }
+
+  private rule(c: HighlightColor) {
+    return `::highlight(${NAME(c)}){background-color:${colorWithAlpha(c, 0.55)};color:inherit}`;
   }
 
   render(items: { id: string; color: HighlightColor; range: Range }[]) {
@@ -62,11 +73,18 @@ class CssHighlightRenderer implements Renderer {
       list.push(item.range);
       byColor.set(item.color, list);
     }
-    for (const c of HIGHLIGHT_COLORS) {
-      const list = byColor.get(c);
-      if (list?.length) CSS.highlights.set(NAME(c), new Highlight(...list));
-      else CSS.highlights.delete(NAME(c));
+    const next = new Set<string>();
+    for (const [c, list] of byColor) {
+      if (!this.styled.has(c)) {
+        // Custom colours get their rule the first time they are painted.
+        this.addRule(this.rule(c));
+        this.styled.add(c);
+      }
+      CSS.highlights.set(NAME(c), new Highlight(...list));
+      next.add(NAME(c));
     }
+    for (const name of this.active) if (!next.has(name)) CSS.highlights.delete(name);
+    this.active = next;
   }
 
   hitTest(x: number, y: number) {
@@ -123,6 +141,7 @@ class MarkRenderer implements Renderer {
         const mark = document.createElement("mark");
         mark.setAttribute(MARK_ATTR, item.id);
         mark.setAttribute("data-wph-color", item.color);
+        if (!isPresetColor(item.color)) mark.style.cssText = `background-color:${colorWithAlpha(item.color, 0.55)};color:inherit;padding:0;margin:0;border-radius:0`;
         target.parentNode?.insertBefore(mark, target);
         mark.appendChild(target);
       }

@@ -91,9 +91,9 @@ test("a highlight in late-loading content is restored once the content appears",
 
 test("highlight a PDF in the extension viewer and reopen it from the dashboard", async ({ context, extensionId, site }) => {
   const page = await context.newPage();
-  // A .pdf URL opened in Chrome is handed to the extension viewer.
-  await page.goto(`${site}/doc.pdf`).catch(() => {});
-  await page.waitForURL(/chrome-extension:\/\/.*\/pdf\/index\.html/);
+  // Opened in the viewer directly: headless Chromium downloads PDFs instead of displaying them,
+  // so the automatic redirect of .pdf tabs cannot be exercised here.
+  await page.goto(`chrome-extension://${extensionId}/pdf/index.html?src=${encodeURIComponent(`${site}/doc.pdf`)}`);
   await expect(page.locator(".textLayer span").first()).toContainText("Highlight this PDF");
 
   await selectText(page, ".textLayer", "this PDF sentence");
@@ -110,4 +110,27 @@ test("highlight a PDF in the extension viewer and reopen it from the dashboard",
   await expect(dash.getByText("p. 1")).toBeVisible();
   const [viewer] = await Promise.all([context.waitForEvent("page"), dash.getByRole("button", { name: "Open PDF" }).click()]);
   await expect(viewer.locator(".hl-layer > div")).toHaveCount(1);
+});
+
+test("pick a custom color from the page toolbar and keep it after reload", async ({ context, extensionId, site }) => {
+  const page = await context.newPage();
+  await page.goto(`${site}/custom`);
+  await page.waitForTimeout(500);
+  await selectText(page, "#p1", "fail in partial ways");
+  // Stand-in for choosing a colour in the browser's picker and closing it.
+  await page.locator("wph-root input[type=color]").evaluate((el: HTMLInputElement) => {
+    el.value = "#14B8A6";
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await expect.poll(() => painted(page)).toEqual({ "wph-c-14b8a6": ["fail in partial ways"] });
+  await page.reload();
+  await expect.poll(() => painted(page)).toEqual({ "wph-c-14b8a6": ["fail in partial ways"] });
+
+  const dash = await context.newPage();
+  await dash.goto(`chrome-extension://${extensionId}/dashboard/index.html`);
+  await dash.getByRole("button", { name: /Filters/ }).click();
+  await expect(dash.getByRole("button", { name: "#14B8A6" })).toBeVisible();
+  // Recolor back to a preset from the dashboard; the open page follows.
+  await dash.locator("li").filter({ hasText: "fail in partial ways" }).getByRole("button", { name: "Purple" }).click();
+  await expect.poll(() => painted(page)).toEqual({ "wph-purple": ["fail in partial ways"] });
 });

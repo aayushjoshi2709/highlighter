@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { COLOR_HEX, COLOR_LABEL } from "../shared/colors";
+import { useEffect, useRef, useState } from "react";
+import { COLOR_HEX, COLOR_LABEL, colorHex, isPresetColor, toCustomColor } from "../shared/colors";
 import {
   ACCOUNT_KEY, DEFAULT_PREFS, SYNC_STATUS_KEY, getAccount, getPrefs, getSyncStatus, onPrefsChanged, onStorageKey,
   type Account, type Prefs, type SyncStatus,
@@ -26,7 +26,54 @@ export function Swatches(props: { value?: HighlightColor | null; onPick: (c: Hig
           style={{ background: COLOR_HEX[c], width: size, height: size }}
         />
       ))}
+      <CustomSwatch value={props.value} onPick={props.onPick} size={size} />
     </span>
+  );
+}
+
+/** A seventh swatch that opens the browser's colour picker for any custom colour. */
+function CustomSwatch(props: { value?: HighlightColor | null; onPick: (c: HighlightColor) => void; size: number }) {
+  const input = useRef<HTMLInputElement>(null);
+  const onPick = useRef(props.onPick);
+  onPick.current = props.onPick;
+  const custom = props.value && !isPresetColor(props.value) ? props.value : null;
+
+  // React's onChange fires on every drag inside the picker; the native "change"
+  // event fires once, when the picker is dismissed, so one pick is one write.
+  useEffect(() => {
+    const el = input.current!;
+    const commit = () => {
+      const color = toCustomColor(el.value);
+      if (color) onPick.current(color);
+    };
+    el.addEventListener("change", commit);
+    return () => el.removeEventListener("change", commit);
+  }, []);
+
+  // Keep the picker's starting colour in step with the highlight.
+  useEffect(() => {
+    if (input.current) input.current.value = custom ?? "#fde047";
+  }, [custom]);
+
+  return (
+    <label
+      title={custom ? `Custom color ${custom.toUpperCase()}` : "Custom color…"}
+      onClick={(e) => e.stopPropagation()}
+      className={`relative inline-block cursor-pointer overflow-hidden rounded-full border-2 transition-transform hover:scale-110 ${custom ? "border-slate-700" : "border-transparent ring-1 ring-black/10"}`}
+      style={{
+        width: props.size,
+        height: props.size,
+        background: custom ? colorHex(custom) : "conic-gradient(#f87171,#fbbf24,#a3e635,#34d399,#38bdf8,#818cf8,#e879f9,#f87171)",
+      }}
+    >
+      <input
+        ref={input}
+        type="color"
+        aria-label="Custom color"
+        defaultValue={custom ?? "#fde047"}
+        className="absolute -inset-1 h-[calc(100%+8px)] w-[calc(100%+8px)] cursor-pointer opacity-0"
+      />
+    </label>
   );
 }
 

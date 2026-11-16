@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { COLOR_HEX, COLOR_LABEL, colorWithAlpha } from "../../shared/colors";
+import { colorHex, colorLabel, colorWithAlpha, isPresetColor } from "../../shared/colors";
 import { openHighlightSource } from "../../shared/open";
 import { createTag, deleteHighlights, updateHighlight, updateHighlights } from "../../shared/repo";
-import { HIGHLIGHT_COLORS, type Highlight } from "../../shared/types";
+import { HIGHLIGHT_COLORS, type Highlight, type HighlightColor } from "../../shared/types";
 import { domainOf, formatDate } from "../../shared/util";
 import { Swatches } from "../../ui/common";
 import type { Data } from "./App";
@@ -35,6 +35,11 @@ export function HighlightList({ data, section }: { data: Data; section: Section 
     [filters, section],
   );
   const results = useMemo(() => filterHighlights(data.highlights, effective, names), [data.highlights, effective, names]);
+  // The six presets, then every custom colour currently in use.
+  const filterColors = useMemo<HighlightColor[]>(
+    () => [...HIGHLIGHT_COLORS, ...[...new Set(data.highlights.map((h) => h.color).filter((c) => !isPresetColor(c)))].sort()],
+    [data.highlights],
+  );
   const domains = useMemo(() => [...new Set(data.highlights.map((h) => domainOf(h.source.url)).filter(Boolean))].sort(), [data.highlights]);
 
   const selectedIds = results.filter((h) => selected.has(h.id)).map((h) => h.id);
@@ -77,7 +82,7 @@ export function HighlightList({ data, section }: { data: Data; section: Section 
           <div className="col-span-2 md:col-span-3">
             <div className="mb-1 text-xs font-medium text-slate-500">Color</div>
             <div className="flex flex-wrap gap-2">
-              {HIGHLIGHT_COLORS.map((c) => {
+              {filterColors.map((c) => {
                 const on = filters.colors.includes(c);
                 return (
                   <button
@@ -86,8 +91,8 @@ export function HighlightList({ data, section }: { data: Data; section: Section 
                     onClick={() => setFilters({ colors: on ? filters.colors.filter((x) => x !== c) : [...filters.colors, c] })}
                     className={`chip border ${on ? "border-slate-700" : "border-transparent"}`}
                   >
-                    <span className="h-3 w-3 rounded-full" style={{ background: COLOR_HEX[c] }} />
-                    {COLOR_LABEL[c]}
+                    <span className="h-3 w-3 rounded-full" style={{ background: colorHex(c) }} />
+                    {colorLabel(c)}
                   </button>
                 );
               })}
@@ -244,7 +249,7 @@ function HighlightCard({ h, data, selected, onSelect }: { h: Highlight; data: Da
         <input type="checkbox" className="mt-1" checked={selected} onChange={onSelect} aria-label="Select highlight" />
         <div className="min-w-0 flex-1">
           <blockquote className="whitespace-pre-wrap break-words rounded border-l-4 px-3 py-2 text-[15px] leading-relaxed"
-            style={{ borderColor: COLOR_HEX[h.color], background: colorWithAlpha(h.color, 0.22) }}>
+            style={{ borderColor: colorHex(h.color), background: colorWithAlpha(h.color, 0.22) }}>
             {h.anchor.exact}
           </blockquote>
 

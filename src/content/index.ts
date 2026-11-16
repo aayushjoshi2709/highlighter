@@ -126,8 +126,12 @@ function main() {
     return range;
   }
 
+  /** Selection captured when the colour picker opened, in case the picker clears it. */
+  let pickerRange: Range | null = null;
+
   function anchorForSelection() {
-    const range = selectionRange();
+    const range = selectionRange() ?? pickerRange;
+    pickerRange = null;
     if (!range) return null;
     // <mark> wrappers (fallback renderer) are inline and do not alter the indexed text.
     return describeRange(buildTextIndex(document.body), range);
@@ -184,6 +188,9 @@ function main() {
       void patch(id, { anchor }, false);
     },
     onCancelRepair: () => setRepair(null),
+    onPickerOpen: () => {
+      pickerRange = selectionRange()?.cloneRange() ?? null;
+    },
   });
 
   // --------------------------------------------------------------- events
@@ -209,11 +216,17 @@ function main() {
   });
 
   document.addEventListener("mousedown", (e) => {
-    if (toolbar.isOpen && !toolbar.contains(e.target)) toolbar.hide();
+    if (!toolbar.isOpen || toolbar.contains(e.target)) return;
+    if (toolbar.isPickingColor) {
+      // This click only dismisses the browser's colour picker; keep the bar for its result.
+      toolbar.isPickingColor = false;
+      return;
+    }
+    toolbar.hide();
   }, true);
 
   document.addEventListener("selectionchange", () => {
-    if (!toolbar.isOpen || toolbar.editingId) return;
+    if (!toolbar.isOpen || toolbar.editingId || toolbar.isPickingColor) return;
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed) toolbar.hide();
   });

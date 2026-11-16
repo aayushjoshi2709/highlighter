@@ -1,4 +1,4 @@
-import { COLOR_HEX, COLOR_LABEL } from "../shared/colors";
+import { COLOR_HEX, COLOR_LABEL, colorHex, isPresetColor, toCustomColor } from "../shared/colors";
 import { HIGHLIGHT_COLORS } from "../shared/constants";
 import type { Highlight, HighlightColor } from "../shared/types";
 
@@ -16,6 +16,8 @@ export interface ToolbarActions {
   onDelete(id: string): void;
   onAttach(): void;
   onCancelRepair(): void;
+  /** The native colour picker is about to open; the page selection may not survive it. */
+  onPickerOpen(): void;
 }
 
 const CSS_TEXT = `
@@ -27,6 +29,8 @@ const CSS_TEXT = `
 .sw{width:20px;height:20px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;box-sizing:border-box}
 .sw:hover{transform:scale(1.15)}
 .sw.on{border-color:#fff}
+.sw.custom{position:relative;overflow:hidden;display:inline-block;background:conic-gradient(#f87171,#fbbf24,#a3e635,#34d399,#38bdf8,#818cf8,#e879f9,#f87171)}
+.sw.custom input{position:absolute;inset:-4px;width:calc(100% + 8px);height:calc(100% + 8px);opacity:0;cursor:pointer;padding:0;border:0}
 .btn{background:transparent;border:0;color:#e5e7eb;cursor:pointer;padding:4px 6px;border-radius:6px;font:inherit}
 .btn:hover{background:#374151;color:#fff}
 .btn.primary{background:#2563eb;color:#fff}
@@ -138,6 +142,37 @@ export class Toolbar {
     });
   }
 
+  /** True while the browser's colour picker is open, so losing the selection must not close the bar. */
+  isPickingColor = false;
+
+  /** A seventh swatch that opens the browser's colour picker for any custom colour. */
+  private customSwatch(current: HighlightColor | null, onPick: (c: HighlightColor) => void) {
+    const custom = current && !isPresetColor(current) ? current : null;
+    const label = document.createElement("label");
+    label.className = `sw custom${custom ? " on" : ""}`;
+    label.title = custom ? `Custom color ${custom.toUpperCase()}` : "Custom color…";
+    if (custom) label.style.background = colorHex(custom);
+    const input = document.createElement("input");
+    input.type = "color";
+    input.value = custom ?? colorHex(this.defaultColor);
+    input.setAttribute("aria-label", "Custom highlight color");
+    input.dataset.color = "custom";
+    input.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.isPickingColor = true;
+      this.actions.onPickerOpen();
+    });
+    // "change" fires once, when the picker is dismissed with a new colour.
+    input.addEventListener("change", () => {
+      this.isPickingColor = false;
+      const color = toCustomColor(input.value);
+      if (color) onPick(color);
+    });
+    input.addEventListener("blur", () => setTimeout(() => (this.isPickingColor = false), 200));
+    label.append(input);
+    return label;
+  }
+
   private sep() {
     const s = document.createElement("span");
     s.className = "sep";
@@ -155,6 +190,7 @@ export class Toolbar {
     } else if (m.kind === "selection") {
       this.bar.append(
         ...this.swatches(null, (c) => this.actions.onCreate(c, false)),
+        this.customSwatch(null, (c) => this.actions.onCreate(c, false)),
         this.sep(),
         this.button("✎ Note", () => this.actions.onCreate(this.defaultColor, true), "btn", "Highlight and add a note"),
         this.button("✕", () => this.hide(), "btn", "Dismiss"),
@@ -163,6 +199,7 @@ export class Toolbar {
       const h = m.highlight;
       this.bar.append(
         ...this.swatches(h.color, (c) => this.actions.onRecolor(h.id, c)),
+        this.customSwatch(h.color, (c) => this.actions.onRecolor(h.id, c)),
         this.sep(),
         this.button("✎", () => this.showForHighlight(m.rect, h, !m.noteOpen), "btn", h.note ? "Edit note" : "Add note"),
         this.button(h.favorite ? "★" : "☆", () => this.actions.onFavorite(h.id, !h.favorite), "btn", h.favorite ? "Remove favorite" : "Favorite"),

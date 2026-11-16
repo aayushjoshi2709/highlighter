@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "../src/shared/db";
 import { bundleToMarkdown, exportBundle, incomingWins, mergeBundle } from "../src/shared/merge";
 import { createCollection, createHighlight, createTag, deleteCollection, deleteHighlights, highlightsForDocument, updateHighlight } from "../src/shared/repo";
-import { DataBundleSchema, type Highlight } from "../src/shared/types";
+import { colorHex, colorLabel, colorWithAlpha, toCustomColor } from "../src/shared/colors";
+import { DataBundleSchema, HighlightColorSchema, type Highlight } from "../src/shared/types";
 import { isPdfUrl, normalizeUrl } from "../src/shared/util";
 import { EMPTY_FILTERS, filterHighlights } from "../src/pages/dashboard/search";
 
@@ -148,5 +149,32 @@ describe("urls", () => {
     expect(isPdfUrl("https://a.com/paper.PDF?dl=1")).toBe(true);
     expect(isPdfUrl("https://a.com/paper.pdf.html")).toBe(false);
     expect(isPdfUrl("chrome-extension://abc/pdf/index.html?src=x.pdf")).toBe(false);
+  });
+});
+
+describe("custom colors", () => {
+  it("accepts presets and #rrggbb, normalising case, and rejects anything else", () => {
+    expect(HighlightColorSchema.parse("green")).toBe("green");
+    expect(HighlightColorSchema.parse("#12ABef")).toBe("#12abef");
+    for (const bad of ["teal", "#fff", "#12345g", "rgb(1,2,3)", ""]) expect(HighlightColorSchema.safeParse(bad).success).toBe(false);
+    expect(toCustomColor(" #AABBCC ")).toBe("#aabbcc");
+    expect(toCustomColor("red")).toBeNull();
+  });
+
+  it("resolves hex, label and alpha for both kinds", () => {
+    expect(colorHex("yellow")).toBe("#fde047");
+    expect(colorHex("#102030")).toBe("#102030");
+    expect(colorLabel("blue")).toBe("Blue");
+    expect(colorLabel("#102030")).toBe("#102030");
+    expect(colorWithAlpha("#102030", 0.5)).toBe("rgba(16, 32, 48, 0.5)");
+  });
+
+  it("stores, filters and exports a custom-colored highlight", async () => {
+    const h = await createHighlight({ document: doc, anchor: anchor("teal text"), color: "#14b8a6" });
+    await createHighlight({ document: doc, anchor: anchor("plain"), color: "yellow" });
+    const all = await highlightsForDocument(doc.id);
+    expect(filterHighlights(all, { ...EMPTY_FILTERS, colors: ["#14b8a6"] }, { tags: new Map(), collections: new Map() }).map((x) => x.id)).toEqual([h.id]);
+    const parsed = DataBundleSchema.parse(JSON.parse(JSON.stringify(await exportBundle())));
+    expect(parsed.highlights.map((x) => x.color).sort()).toEqual(["#14b8a6", "yellow"]);
   });
 });
