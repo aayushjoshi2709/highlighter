@@ -9,7 +9,7 @@ import { setPrefs } from "../../shared/prefs";
 import { highlightsForDocument } from "../../shared/repo";
 import type { Highlight } from "../../shared/types";
 import { isPdfUrl, viewerUrl, webDocumentId } from "../../shared/util";
-import { Swatches, SyncDot, useAccount, usePrefs } from "../../ui/common";
+import { ForkLink, Swatches, SyncDot, useAccount, usePrefs } from "../../ui/common";
 import "../../ui/styles.css";
 import "../../ui/theme";
 
@@ -151,6 +151,7 @@ function Popup() {
         </div>
         {error && <p className="text-xs text-red-700">{error}</p>}
         <button className="btn-primary w-full justify-center" onClick={() => openDashboard()}>Open dashboard</button>
+        <ForkLink className="justify-center" />
       </footer>
     </div>
   );

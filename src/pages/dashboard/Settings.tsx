@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { sendBg, type BgRequest } from "../../shared/messages";
 import { setPrefs, type Theme } from "../../shared/prefs";
-import { Swatches, SyncDot, useAccount, usePrefs } from "../../ui/common";
+import { ForkLink, Swatches, SyncDot, useAccount, usePrefs } from "../../ui/common";
 import { exportJson, exportMarkdown, importJson } from "./io";
 
 function Card(props: { title: string; children: ReactNode }) {
@@ -161,6 +161,11 @@ export function Settings() {
             />
           </label>
         </div>
+      </Card>
+
+      <Card title="About">
+        <p className="mb-2 text-sm text-slate-600">Web & PDF Highlighter is open source. Fork it, report issues or contribute on GitHub.</p>
+        <ForkLink />
       </Card>
     </div>
   );

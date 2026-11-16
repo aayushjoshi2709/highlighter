@@ -72,19 +72,6 @@ device writes `snapshot.json` and removes the files it folded in. Imported PDF f
 "Also back up imported PDF files" is turned on; without it, a synced PDF highlight on another device asks you to
 import the same file.
 
-## Decisions that differ from the PRD
-
-The PRD text I was given stopped partway through §8.4 (the `SyncOperation` model), so the sync design above and
-anything after that point are my own.
-
-- **No `highlightTags` table.** `Highlight.tags` holds tag ids with a multi-entry index, which gives the same queries
-  without a second copy of the relationship to keep consistent across devices.
-- **No `settings` table.** Preferences live in `chrome.storage.local` (the PRD allows this for lightweight
-  preferences) so the content script can read them. An extra `pdfFiles` table stores imported PDF bytes.
-- **`Anchor.rects`** (optional) was added for PDF selection geometry; `Document` gained `deletedAt` and `localFile`.
-- **A selection spanning several PDF pages** becomes one highlight per page, so every anchor is page-local.
-- **Pages you only visit are not recorded.** A document row is created with its first highlight.
-
 ## Known limits
 
 - PDFs served from URLs that do not end in `.pdf` are not redirected automatically; use the popup button
