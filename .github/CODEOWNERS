@@ -1,0 +1,5 @@
+# Default owner for everything in the repository.
+* @aayushjoshi2709
+
+# Changes to CI and branch rules always need the owner.
+/.github/ @aayushjoshi2709
