@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Web & PDF Highlighter",
+  "name": "Highlighter",
   "version": "0.1.0",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtf5H1ngn8IYAwPMkiSgbnVbt/KrW/G9zL4rByHZDMHHZyeYJU6pXH5fVpfQ1DfzXcKJ/reOV7I6susEU/yp+IRU2uMi7DOYZnrM9GMpkNA5XiscL3TJVbhYPixybhS2PVjyNuCkKUi7oO5u5V4SumK3QOQVFHp0wrDvSXDxG6qnHTNyQL6Aj02j0fu+U53kcAuxSDKcqdGV9TcqkpmvqQtbJ7YVqR4Pzlwj4Ke7Bq+g2sOP+xioky7d94fsUAL7JjOny/PQuxh+oHB3y7LtuYRM5vE2RSGozUH00256HpkRuyYD6IOTRTMsVrgn062Qmd/0vpTE6IDCp1Gw5l8wNxQIDAQAB",
   "description": "Highlight text on webpages and PDFs. Local-first, with optional Google Drive sync.",
@@ -13,7 +13,7 @@
   },
   "action": {
     "default_popup": "popup/index.html",
-    "default_title": "Web & PDF Highlighter"
+    "default_title": "Highlighter"
   },
   "background": { "service_worker": "background.js", "type": "module" },
   "content_scripts": [

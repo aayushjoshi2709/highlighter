@@ -164,7 +164,7 @@ export function Settings() {
       </Card>
 
       <Card title="About">
-        <p className="mb-2 text-sm text-slate-600">Web & PDF Highlighter is open source. Fork it, report issues or contribute on GitHub.</p>
+        <p className="mb-2 text-sm text-slate-600">Highlighter is open source. Fork it, report issues or contribute on GitHub.</p>
         <ForkLink />
       </Card>
     </div>

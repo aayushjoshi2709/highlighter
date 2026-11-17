@@ -1,4 +1,4 @@
-# Web & PDF Highlighter
+# Highlighter
 
 A Chrome extension (Manifest V3) for highlighting text on webpages and PDFs. Highlights are saved locally first
 (IndexedDB) and can optionally sync between devices through a hidden app folder in Google Drive. There is no backend.
