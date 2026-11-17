@@ -4,3 +4,7 @@ test-results
 playwright-report
 *.log
 .DS_Store
+
+# extension signing key and packed builds
+*.pem
+*.crx

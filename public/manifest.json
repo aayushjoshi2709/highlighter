@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "Web & PDF Highlighter",
   "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtf5H1ngn8IYAwPMkiSgbnVbt/KrW/G9zL4rByHZDMHHZyeYJU6pXH5fVpfQ1DfzXcKJ/reOV7I6susEU/yp+IRU2uMi7DOYZnrM9GMpkNA5XiscL3TJVbhYPixybhS2PVjyNuCkKUi7oO5u5V4SumK3QOQVFHp0wrDvSXDxG6qnHTNyQL6Aj02j0fu+U53kcAuxSDKcqdGV9TcqkpmvqQtbJ7YVqR4Pzlwj4Ke7Bq+g2sOP+xioky7d94fsUAL7JjOny/PQuxh+oHB3y7LtuYRM5vE2RSGozUH00256HpkRuyYD6IOTRTMsVrgn062Qmd/0vpTE6IDCp1Gw5l8wNxQIDAQAB",
   "description": "Highlight text on webpages and PDFs. Local-first, with optional Google Drive sync.",
   "minimum_chrome_version": "120",
   "icons": {
@@ -22,10 +23,17 @@
       "run_at": "document_idle"
     }
   ],
-  "permissions": ["storage", "unlimitedStorage", "identity", "alarms", "contextMenus", "tabs"],
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "identity",
+    "alarms",
+    "contextMenus",
+    "tabs"
+  ],
   "host_permissions": ["<all_urls>"],
   "oauth2": {
-    "client_id": "REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com",
+    "client_id": "822884010982-dup47e3d468lidr9j2mg2f8gcb4c8rtp.apps.googleusercontent.com",
     "scopes": ["openid", "email", "profile"]
   },
   "commands": {
