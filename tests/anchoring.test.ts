@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildTextIndex, describeOffsets, describeRange, resolveAnchor, resolveToRange, similarity } from "../src/anchoring/anchor";
-import { offsetsToRange } from "../src/anchoring/textIndex";
+import { buildTextIndexAsync, offsetsToRange } from "../src/anchoring/textIndex";
 
 function page(html: string) {
   document.body.innerHTML = html;
@@ -103,5 +103,30 @@ describe("similarity", () => {
     expect(similarity("abc", "abc")).toBe(1);
     expect(similarity("kitten", "sitting")).toBeCloseTo(1 - 3 / 7);
     expect(similarity("abcdef", "uvwxyz")).toBe(0);
+  });
+});
+
+describe("time-sliced indexing", () => {
+  const big = Array.from({ length: 400 }, (_, i) => `<p>Paragraph ${i} with <b>some</b> text.</p>`).join("");
+
+  it("yields between slices and produces the same index as the synchronous build", async () => {
+    const sync = page(big);
+    let yields = 0;
+    const index = await buildTextIndexAsync(document.body, {
+      sliceMs: 0, // every slice is exhausted at once, forcing a yield per batch of nodes
+      yieldToMain: async () => void yields++,
+    });
+    expect(yields).toBeGreaterThan(10);
+    expect(index!.text).toBe(sync.text);
+    expect(index!.segments.length).toBe(sync.segments.length);
+    expect(resolveToRange(index!, describeOffsets(sync.text, 100, 140)).range!.toString().length).toBeGreaterThan(0);
+  });
+
+  it("stops when cancelled", async () => {
+    page(big);
+    let yields = 0;
+    const index = await buildTextIndexAsync(document.body, { sliceMs: 0, yieldToMain: async () => void yields++, isCancelled: () => yields >= 2 });
+    expect(index).toBeNull();
+    expect(yields).toBe(2);
   });
 });

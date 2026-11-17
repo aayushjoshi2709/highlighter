@@ -1,11 +1,12 @@
-import { buildTextIndex, describeRange, resolveToRange } from "../anchoring/anchor";
+import { buildTextIndex, buildTextIndexAsync, describeRange, resolveToRange } from "../anchoring/anchor";
 import type { ContentRequest, ContentState } from "../shared/messages";
 import { sendBg } from "../shared/messages";
 import { CHANGE_KEY, getPrefs, onPrefsChanged, type ChangeNotice } from "../shared/prefs";
 import type { DocumentInput } from "../shared/repo";
 import type { Highlight, HighlightColor } from "../shared/types";
-import { debounce, normalizeUrl, webDocumentId } from "../shared/util";
+import { normalizeUrl, webDocumentId } from "../shared/util";
 import { createRenderer } from "./renderer";
+import { debounceMax, whenIdle, yieldToMain } from "./scheduler";
 import { Toolbar } from "./toolbar";
 
 declare global {
@@ -56,46 +57,155 @@ function main() {
 
   // ------------------------------------------------------------- rendering
 
-  /** Re-resolves every highlight against the current DOM and repaints. */
-  function apply() {
+  /** Where each highlight currently sits in the DOM (live ranges from the last restoration). */
+  let resolved = new Map<string, Range>();
+  /** Bumped on every page mutation; lets a restoration notice that its index went stale. */
+  let domVersion = 0;
+  /** Identifies the newest restoration; older ones stop at their next yield. */
+  let runId = 0;
+  let staleRuns = 0;
+  const SLICE_MS = 5;
+
+  /** Paints from the ranges already known. Cheap and synchronous: no indexing. */
+  function repaint() {
+    // The <mark> fallback cannot repaint in place: its wrappers have to be rebuilt.
+    if (renderer.mutatesDom) return restoreSync();
+    paint();
+    syncObserver();
+  }
+
+  function paint() {
+    for (const id of resolved.keys()) if (!highlights.has(id)) resolved.delete(id);
+    const items: { id: string; color: HighlightColor; range: Range }[] = [];
+    for (const h of highlights.values()) {
+      const range = resolved.get(h.id);
+      if (range) items.push({ id: h.id, color: h.color, range });
+    }
+    renderer.render(items);
+  }
+
+  const strip = (s: string) => s.replace(/\s+/g, "");
+
+  /**
+   * Re-resolves every highlight against the current DOM and repaints.
+   *
+   * Never blocks the page: it waits for an idle period, indexes the document
+   * in ~5 ms slices and resolves anchors in slices too, yielding to rendering
+   * and input in between. If the DOM changes underneath it, the stale result
+   * is dropped and the (debounced) mutation handler starts a fresh run.
+   */
+  async function restore() {
+    const id = ++runId;
+    syncObserver();
     if (!document.body) return;
+    if (renderer.mutatesDom) return restoreSync();
+    if (!highlights.size) {
+      orphanIds = new Set();
+      resolved = new Map();
+      repaint();
+      return;
+    }
+
+    await whenIdle();
+    if (id !== runId || !alive) return;
+    const version = domVersion;
+    const index = await buildTextIndexAsync(document.body, { sliceMs: SLICE_MS, yieldToMain, isCancelled: () => id !== runId || !alive });
+    if (!index) return;
+
+    // A page that mutates constantly would make every run stale; after a few
+    // attempts accept the index but verify each range against its quote.
+    let verify = false;
+    if (version !== domVersion) {
+      if (++staleRuns < 3) return void scheduleRestore();
+      verify = true;
+    }
+    staleRuns = 0;
+
+    const next = new Map<string, Range>();
+    const orphans = new Set<string>();
+    let deadline = performance.now() + SLICE_MS;
+    for (const h of [...highlights.values()]) {
+      let range: Range | null = null;
+      try {
+        const r = resolveToRange(index, h.anchor);
+        range = r.range;
+        if (range && verify && r.status === "exact" && strip(range.toString()) !== strip(h.anchor.exact)) range = null;
+      } catch {
+        range = null; // a node changed since it was indexed
+      }
+      if (range) next.set(h.id, range);
+      else orphans.add(h.id);
+      if (performance.now() >= deadline) {
+        await yieldToMain();
+        if (id !== runId || !alive) return;
+        deadline = performance.now() + SLICE_MS;
+      }
+    }
+    // Highlights created while this run was in flight were painted from their selection; keep them.
+    for (const [hid, range] of resolved) if (!next.has(hid) && !orphans.has(hid)) next.set(hid, range);
+    resolved = next;
+    orphanIds = new Set([...orphans].filter((o) => highlights.has(o)));
+    repaint();
+  }
+
+  /** <mark> fallback only: wrappers must be removed, indexed and re-added in one task to avoid flicker. */
+  function restoreSync() {
     applying = true;
     try {
-      if (renderer.mutatesDom) renderer.clear(); // resolve against the unwrapped DOM
-      const items: { id: string; color: HighlightColor; range: Range }[] = [];
+      renderer.clear();
+      const index = buildTextIndex(document.body);
+      const next = new Map<string, Range>();
       const orphans = new Set<string>();
-      if (highlights.size) {
-        const index = buildTextIndex(document.body);
-        for (const h of highlights.values()) {
-          const { range } = resolveToRange(index, h.anchor);
-          if (range) items.push({ id: h.id, color: h.color, range });
-          else orphans.add(h.id);
-        }
+      for (const h of highlights.values()) {
+        const { range } = resolveToRange(index, h.anchor);
+        if (range) next.set(h.id, range);
+        else orphans.add(h.id);
       }
+      resolved = next;
       orphanIds = orphans;
-      renderer.render(items);
+      paint();
     } finally {
-      observer.takeRecords();
+      observer.takeRecords(); // our own wrapper changes are not page mutations
       applying = false;
     }
+    syncObserver();
   }
 
   async function load() {
     const res = await guard(() => sendBg<{ highlights: Highlight[] }>({ type: "page:load", document: describeDocument() }));
     if (!res) return;
-    highlights = new Map(res.highlights.map((h) => [h.id, h]));
-    apply();
+    const incoming = new Map(res.highlights.map((h) => [h.id, h]));
+    // Colour, note or favourite edits and deletions do not move anything: repaint without re-indexing.
+    const sameAnchors = [...incoming.values()].every((h) => {
+      const old = highlights.get(h.id);
+      return old && old.anchor.exact === h.anchor.exact && old.anchor.start === h.anchor.start && old.anchor.prefix === h.anchor.prefix;
+    });
+    highlights = incoming;
+    if (sameAnchors && !renderer.mutatesDom) {
+      orphanIds = new Set([...orphanIds].filter((o) => highlights.has(o)));
+      repaint();
+    } else void restore();
   }
 
   // Dynamic pages: content may arrive (or be re-rendered) after load.
-  const reapply = debounce(() => {
-    if (alive && highlights.size) apply();
-  }, 700);
+  const scheduleRestore = debounceMax(() => {
+    if (alive && highlights.size) void restore();
+  }, 700, 3000);
   const observer = new MutationObserver((mutations) => {
-    if (applying || !highlights.size) return;
+    if (applying) return;
     if (mutations.every((m) => toolbar.contains(m.target))) return;
-    reapply();
+    domVersion++;
+    scheduleRestore();
   });
+  // Pages without highlights are not observed at all.
+  let observing = false;
+  function syncObserver() {
+    const want = alive && highlights.size > 0 && Boolean(document.body);
+    if (want === observing) return;
+    observing = want;
+    if (want) observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    else observer.disconnect();
+  }
 
   // SPA navigation: content scripts cannot see the page's history calls, so watch the URL.
   const onUrlMaybeChanged = () => {
@@ -104,9 +214,11 @@ function main() {
     documentId = next;
     highlights = new Map();
     orphanIds = new Set();
+    resolved = new Map();
+    runId++; // abandon any restoration for the previous page
     toolbar.hide();
     setRepair(null);
-    renderer.clear();
+    repaint();
     void load();
   };
   const urlTimer = setInterval(onUrlMaybeChanged, 800);
@@ -129,22 +241,35 @@ function main() {
   /** Selection captured when the colour picker opened, in case the picker clears it. */
   let pickerRange: Range | null = null;
 
-  function anchorForSelection() {
-    const range = selectionRange() ?? pickerRange;
+  /**
+   * Describes the current selection as an anchor. The selection is captured
+   * first (as a live range); the document is then indexed in slices, retrying
+   * if the page changed meanwhile, so even this user-initiated step cannot freeze the page.
+   */
+  async function anchorForSelection() {
+    const range = (selectionRange() ?? pickerRange)?.cloneRange();
     pickerRange = null;
     if (!range) return null;
     // <mark> wrappers (fallback renderer) are inline and do not alter the indexed text.
-    return describeRange(buildTextIndex(document.body), range);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const version = domVersion;
+      const index = await buildTextIndexAsync(document.body, { sliceMs: 8, yieldToMain });
+      if (index && version === domVersion) return { anchor: describeRange(index, range), range };
+    }
+    return { anchor: describeRange(buildTextIndex(document.body), range), range };
   }
 
   async function createFromSelection(color: HighlightColor, withNote: boolean) {
-    const anchor = anchorForSelection();
-    if (!anchor) return;
+    const described = await anchorForSelection();
+    const anchor = described?.anchor;
+    if (!described || !anchor) return;
     const created = await guard(() => sendBg<Highlight>({ type: "highlight:create", document: describeDocument(), anchor, color }));
     if (!created) return;
     highlights.set(created.id, created);
     window.getSelection()?.removeAllRanges();
-    apply();
+    // The selected range is exactly where the highlight goes: paint it now, no re-indexing.
+    resolved.set(created.id, described.range);
+    repaint();
     const range = renderer.rangeFor(created.id);
     if (withNote && range) toolbar.showForHighlight(range.getBoundingClientRect(), created, true);
     else toolbar.hide();
@@ -155,7 +280,7 @@ function main() {
     if (!h) return;
     const next = { ...h, ...p };
     highlights.set(id, next);
-    apply();
+    repaint();
     await guard(() => sendBg({ type: "highlight:update", id, patch: p }));
     const range = renderer.rangeFor(id);
     if (keepOpen && range && toolbar.editingId === id) toolbar.showForHighlight(range.getBoundingClientRect(), next);
@@ -175,17 +300,22 @@ function main() {
     onFavorite: (id, favorite) => void patch(id, { favorite }),
     onDelete: (id) => {
       highlights.delete(id);
+      orphanIds.delete(id);
       toolbar.hide();
-      apply();
+      repaint();
       void guard(() => sendBg({ type: "highlight:delete", id }));
     },
     onAttach: () => {
-      const anchor = anchorForSelection();
-      if (!anchor || !repairId) return;
       const id = repairId;
-      setRepair(null);
-      window.getSelection()?.removeAllRanges();
-      void patch(id, { anchor }, false);
+      if (!id) return;
+      void anchorForSelection().then((described) => {
+        if (!described?.anchor) return;
+        setRepair(null);
+        window.getSelection()?.removeAllRanges();
+        resolved.set(id, described.range);
+        orphanIds.delete(id);
+        void patch(id, { anchor: described.anchor }, false);
+      });
     },
     onCancelRepair: () => setRepair(null),
     onPickerOpen: () => {
@@ -274,10 +404,8 @@ function main() {
   void getPrefs().then((p) => (toolbar.defaultColor = p.defaultColor)).catch(() => {});
   onPrefsChanged((p) => (toolbar.defaultColor = p.defaultColor));
 
-  const start = () => {
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-    void load();
-  };
+  // Nothing here is urgent: let the page finish its own startup work first.
+  const start = () => void whenIdle().then(load);
   if (document.body) start();
   else document.addEventListener("DOMContentLoaded", start, { once: true });
 }

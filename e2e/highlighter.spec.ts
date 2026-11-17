@@ -134,3 +134,36 @@ test("pick a custom color from the page toolbar and keep it after reload", async
   await dash.locator("li").filter({ hasText: "fail in partial ways" }).getByRole("button", { name: "Purple" }).click();
   await expect.poll(() => painted(page)).toEqual({ "wph-purple": ["fail in partial ways"] });
 });
+
+test("restoring highlights on a huge page never blocks the main thread", async ({ context, site }) => {
+  const page = await context.newPage();
+  await page.goto(`${site}/huge`);
+  await page.waitForTimeout(800);
+  await page.locator("#p2").scrollIntoViewIfNeeded();
+  await selectText(page, "#p2", "Raft tolerate crash failures");
+  await page.locator("wph-root button[data-color=yellow]").click();
+  await expect.poll(() => painted(page)).toEqual({ "wph-yellow": ["Raft tolerate crash failures"] });
+
+  // Record long tasks (>50 ms). The page itself produces one while it lays out 20,000 paragraphs
+  // (it is there with the content script disabled too), so only tasks after it has settled count.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __longTasks: number[] };
+    w.__longTasks = [];
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) if (e.startTime > 2500) w.__longTasks.push(Math.round(e.duration));
+    }).observe({ type: "longtask" });
+  });
+  await page.reload();
+  await expect.poll(() => painted(page), { timeout: 15_000 }).toEqual({ "wph-yellow": ["Raft tolerate crash failures"] });
+  await page.waitForTimeout(3000);
+
+  // Replace the highlighted paragraph: the old range dies, so only a full re-index of the
+  // whole document (~1.2 MB of text) can bring the highlight back.
+  await page.evaluate(() => {
+    const p2 = document.getElementById("p2")!;
+    p2.replaceWith(Object.assign(document.createElement("p"), { id: "p2", textContent: p2.textContent }));
+  });
+  expect(await painted(page)).not.toEqual({ "wph-yellow": ["Raft tolerate crash failures"] });
+  await expect.poll(() => painted(page), { timeout: 15_000 }).toEqual({ "wph-yellow": ["Raft tolerate crash failures"] });
+  expect(await page.evaluate(() => (window as unknown as { __longTasks: number[] }).__longTasks)).toEqual([]);
+});

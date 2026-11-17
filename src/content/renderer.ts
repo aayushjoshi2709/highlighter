@@ -47,16 +47,21 @@ class CssHighlightRenderer implements Renderer {
   readonly mutatesDom = false;
   private ranges = new Map<string, Range>();
   private order: string[] = [];
-  private addRule: (rule: string) => void;
+  /**
+   * The stylesheet is installed on first paint, not at start-up: adding a sheet
+   * makes the browser restyle the document, which pages without highlights should never pay for.
+   */
+  private addRule: ((rule: string) => void) | null = null;
   /** Colours that already have a ::highlight rule. */
   private styled = new Set<HighlightColor>(HIGHLIGHT_COLORS);
   /** Registry names set by the last render, so stale ones can be removed. */
   private active = new Set<string>();
 
-  constructor() {
+  private ensureStyles() {
+    if (this.addRule) return this.addRule;
     const rules = HIGHLIGHT_COLORS.map((c) => this.rule(c));
     rules.push(`::highlight(wph-flash){background-color:rgba(239,68,68,.45)}`);
-    this.addRule = installStyles(rules.join("\n"));
+    return (this.addRule = installStyles(rules.join("\n")));
   }
 
   private rule(c: HighlightColor) {
@@ -64,6 +69,8 @@ class CssHighlightRenderer implements Renderer {
   }
 
   render(items: { id: string; color: HighlightColor; range: Range }[]) {
+    if (!items.length && !this.active.size) return; // nothing painted, nothing to paint
+    const addRule = this.ensureStyles();
     this.ranges.clear();
     this.order = items.map((i) => i.id);
     const byColor = new Map<HighlightColor, Range[]>();
@@ -77,7 +84,7 @@ class CssHighlightRenderer implements Renderer {
     for (const [c, list] of byColor) {
       if (!this.styled.has(c)) {
         // Custom colours get their rule the first time they are painted.
-        this.addRule(this.rule(c));
+        addRule(this.rule(c));
         this.styled.add(c);
       }
       CSS.highlights.set(NAME(c), new Highlight(...list));

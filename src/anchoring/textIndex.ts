@@ -42,7 +42,12 @@ function blockOf(node: Node, cache: WeakMap<Node, Node | null>): Node | null {
   return el;
 }
 
-export function buildTextIndex(root: Node): TextIndex {
+/**
+ * Incremental index construction. `step` walks text nodes until `shouldPause`
+ * says the time slice is used up, so a large page can be indexed across many
+ * short tasks instead of one long one.
+ */
+function createIndexBuilder(root: Node) {
   const doc = root.ownerDocument ?? (root as Document);
   const walker = doc.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
@@ -68,14 +73,27 @@ export function buildTextIndex(root: Node): TextIndex {
     lastWasSpace = true;
   };
 
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+  /** Returns true when the whole tree has been walked. */
+  const step = (shouldPause?: () => boolean): boolean => {
+   let sinceCheck = 0;
+   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    visit(node);
+    if (shouldPause && ++sinceCheck >= 32) {
+      sinceCheck = 0;
+      if (shouldPause()) return false;
+    }
+   }
+   return true;
+  };
+
+  const visit = (node: Node) => {
     if (node.nodeType !== Node.TEXT_NODE) {
       pushBreak(); // <br>
-      continue;
+      return;
     }
     const textNode = node as Text;
     const data = textNode.data;
-    if (!data) continue;
+    if (!data) return;
     const block = blockOf(textNode, blockCache);
     if (lastBlock !== undefined && block !== lastBlock) pushBreak();
     lastBlock = block;
@@ -95,14 +113,46 @@ export function buildTextIndex(root: Node): TextIndex {
       }
       offsets.push(i);
     }
-    if (!offsets.length) continue;
+    if (!offsets.length) return;
     const seg: Segment = { node: textNode, start: length, offsets };
     segments.push(seg);
     byNode.set(textNode, seg);
     parts.push(chunk);
     length += chunk.length;
+  };
+
+  return { step, finish: (): TextIndex => ({ text: parts.join(""), segments, byNode }) };
+}
+
+export function buildTextIndex(root: Node): TextIndex {
+  const builder = createIndexBuilder(root);
+  builder.step();
+  return builder.finish();
+}
+
+export interface AsyncIndexOptions {
+  /** Longest uninterrupted stretch of work, in milliseconds. */
+  sliceMs?: number;
+  /** Hands control back to the page between slices. */
+  yieldToMain: () => Promise<void>;
+  /** Checked after every slice; a cancelled build resolves to null. */
+  isCancelled?: () => boolean;
+}
+
+/**
+ * Same result as buildTextIndex, but in short slices with a yield between
+ * them so the page can render and handle input while a large document is indexed.
+ * The caller must discard the result if the DOM changed while it was being built.
+ */
+export async function buildTextIndexAsync(root: Node, options: AsyncIndexOptions): Promise<TextIndex | null> {
+  const sliceMs = options.sliceMs ?? 5;
+  const builder = createIndexBuilder(root);
+  for (;;) {
+    const deadline = performance.now() + sliceMs;
+    if (builder.step(() => performance.now() >= deadline)) return builder.finish();
+    await options.yieldToMain();
+    if (options.isCancelled?.()) return null;
   }
-  return { text: parts.join(""), segments, byNode };
 }
 
 function lowerBound(arr: number[], value: number): number {

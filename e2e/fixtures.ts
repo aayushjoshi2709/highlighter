@@ -64,6 +64,11 @@ export const test = base.extend<{ context: BrowserContext; extensionId: string; 
       if (req.url?.startsWith("/doc.pdf")) {
         res.writeHead(200, { "Content-Type": "application/pdf", "Access-Control-Allow-Origin": "*" });
         res.end(tinyPdf());
+      } else if (req.url?.startsWith("/huge")) {
+        // ~1.2 MB of text in 40,000 text nodes, plus the usual article at the end.
+        const filler = Array.from({ length: 20000 }, (_, i) => `<p>Filler paragraph number ${i} <i>with inline markup</i> to index.</p>`).join("");
+        res.writeHead(200, { "Content-Type": "text/html" });
+        res.end(ARTICLE.replace("<h1>", `${filler}<h1>`));
       } else {
         res.writeHead(200, { "Content-Type": "text/html" });
         res.end(ARTICLE);

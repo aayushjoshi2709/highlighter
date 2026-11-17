@@ -1,5 +1,5 @@
 import type { Anchor } from "../shared/types";
-import { buildTextIndex, offsetsToRange, rangeToOffsets, type TextIndex } from "./textIndex";
+import { buildTextIndex, buildTextIndexAsync, offsetsToRange, rangeToOffsets, type TextIndex } from "./textIndex";
 
 export const CONTEXT_LENGTH = 48;
 const MAX_OCCURRENCES = 2000;
@@ -159,4 +159,4 @@ export function resolveToRange(index: TextIndex, anchor: Anchor): ResolvedRange 
   return range ? { status: r.status, range } : { status: "orphaned", range: null };
 }
 
-export { buildTextIndex };
+export { buildTextIndex, buildTextIndexAsync };
